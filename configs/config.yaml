@@ -1,0 +1,129 @@
+# ============================================================
+#  Road Network Extraction — Central Configuration
+# ============================================================
+
+# ----------------------------------------------------------
+# Data
+# ----------------------------------------------------------
+data:
+  train_image_dir: data/processed/train/images
+  train_mask_dir:  data/processed/train/masks
+  val_image_dir:   data/processed/val/images
+  val_mask_dir:    data/processed/val/masks
+  test_image_dir:  data/processed/test/images
+  test_mask_dir:   data/processed/test/masks
+  image_size: 512
+  # Urban oversampling: patches with more roads get higher sample weight
+  urban_oversample: true
+  urban_weight_scale: 4.0   # max extra weight multiplier for dense patches
+
+# ----------------------------------------------------------
+# Model
+# ----------------------------------------------------------
+model:
+  architecture: unet          # unet | attention_unet | deeplabv3plus
+  encoder: resnet50           # resnet34 | resnet50 | efficientnet-b4 | efficientnet-b5
+  pretrained: true
+  in_channels: 3
+  num_classes: 1
+
+# ----------------------------------------------------------
+# Loss  (Combined = bce_weight * BCE + dice_weight * Dice)
+# ----------------------------------------------------------
+loss:
+  type: bce_dice              # bce_dice | focal_dice
+  bce_weight: 0.5
+  dice_weight: 0.5
+  road_class_weight: 3.0      # Pos-weight for BCE (handles class imbalance)
+  # Focal Loss params (only used when type: focal_dice)
+  focal_alpha: 0.75
+  focal_gamma: 2.0
+
+# ----------------------------------------------------------
+# Optimal Threshold (found on validation set)
+# ----------------------------------------------------------
+threshold:
+  optimize: true              # Search for best threshold on val set after training
+  search_range: [0.45, 0.6]
+  search_steps: 9
+  default: 0.5                # Fallback if optimize is false
+
+# ----------------------------------------------------------
+# Training
+# ----------------------------------------------------------
+training:
+  epochs: 60
+  batch_size: 4               # Safe for RTX 3050 6GB at 512x512
+  num_workers: 4
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  # LR Scheduler
+  scheduler: cosine           # cosine | plateau
+  cosine_t_max: 60            # Should match epochs
+  plateau_patience: 5
+  plateau_factor: 0.5
+  # Early Stopping
+  early_stopping: true
+  early_stopping_patience: 12
+  monitor_metric: val_iou     # val_iou | val_f1 | val_loss
+  # Mixed Precision (AMP) — essential for RTX 3050 6GB
+  amp: true
+  # Gradient clipping
+  grad_clip: 1.0
+
+# ----------------------------------------------------------
+# Augmentation
+# ----------------------------------------------------------
+augmentation:
+  use_elastic: true
+  elastic_alpha: 120
+  elastic_sigma: 6.0
+  use_grid_distortion: false
+  brightness_limit: 0.3
+  contrast_limit: 0.3
+  hue_shift: 20
+  sat_shift: 30
+  gauss_noise_var: [10, 50]
+  blur_limit: 3
+
+# ----------------------------------------------------------
+# Test-Time Augmentation (TTA) — enabled by default
+# ----------------------------------------------------------
+tta:
+  enabled: true
+  flips: [horizontal, vertical, both]   # Types of flip TTA to apply
+  n_augments: 4    # Original + hflip + vflip + hvflip
+
+# ----------------------------------------------------------
+# Post-Processing
+# ----------------------------------------------------------
+postprocessing:
+  apply: true
+  # Gaussian blur before thresholding
+  blur_kernel: 3
+  # Morphological closing — fills road gaps
+  closing_kernel_size: 11      # Larger = more connectivity (urban: 7-11)
+  closing_iterations: 2
+  # Slight dilation to restore road width
+  dilation_kernel_size: 3
+  dilation_iterations: 2
+  # Remove small noise blobs
+  min_component_size: 1500     # pixels; smaller blobs removed
+  # Skeletonization (optional — produces centerlines)
+  skeletonize: false
+
+# ----------------------------------------------------------
+# Inference (Sliding Window)
+# ----------------------------------------------------------
+inference:
+  patch_size: 512
+  overlap: 0.5                # 50% overlap to avoid edge artifacts
+  batch_size: 4
+
+# ----------------------------------------------------------
+# Paths
+# ----------------------------------------------------------
+paths:
+  checkpoint_dir: runs/checkpoints
+  log_dir: runs/logs
+  result_dir: results
